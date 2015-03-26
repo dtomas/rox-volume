@@ -2,10 +2,10 @@
 <options>
 	<section title="General">
 		<frame label='Mixer Device'>
-			<entry name='mixer_device'>
+			<mixer_devices_list name='mixer_device'>
 				The card name for your mixer.  Typically it is 'default'.  
 If you have more than one soundcard, you can specify which card you want to control here.
-			</entry>
+			</mixer_devices_list>
 		</frame>
 		<frame label='Mixer Channel'>
 			<channel_list name='mixer_channels'>

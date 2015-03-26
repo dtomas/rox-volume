@@ -81,17 +81,37 @@ def build_channel_list(box, node, label, option):
 	button = gtk.OptionMenu()
 	hbox.pack_start(button, True, True, 0)
 
-	menu = gtk.Menu()
-	button.set_menu(menu)
+	def build():
 
-	for name in ALSA_CHANNELS:
-		item = gtk.MenuItem(name)
-		menu.append(item)
-		item.show_all()
+		menu = gtk.Menu()
+		button.set_menu(menu)
+		if hasattr(alsaaudio, 'cards'):
+			try:
+				mixer_device = alsaaudio.cards().index(MIXER_DEVICE.value)
+			except ValueError:
+				mixer_device = 0
+		else:
+			mixer_device = MIXER_DEVICE.value
+		for channel in alsaaudio.mixers(mixer_device):
+			id = 0
+			while (channel,id) in ALSA_CHANNELS:
+				id += 1
+			try:
+				mixer = alsaaudio.Mixer(channel, id, mixer_device)
+			except alsaaudio.ALSAAudioError:
+				continue
+			if len(mixer.volumecap()):
+				item = gtk.MenuItem(channel)
+				menu.append(item)
+				item.show_all()
+		return menu
+
+	class state:
+		menu = build()
 
 	def update_channel():
 		i = -1
-		for kid in menu.get_children():
+		for kid in state.menu.get_children():
 			i += 1
 			item = kid.child
 			if not item:
@@ -103,8 +123,56 @@ def build_channel_list(box, node, label, option):
 	def read_channel(): return button.child.get_text()
 	box.handlers[option] = (read_channel, update_channel)
 	button.connect('changed', lambda w: box.check_widget(option))
+
+	def options_changed():
+		if MIXER_DEVICE.has_changed:
+			state.menu = build()
+	box.options.add_notify(options_changed)
 	return [hbox]
 OptionsBox.widget_registry['channel_list'] = build_channel_list
+
+
+def build_mixer_devices_list(box, node, label, option):
+	hbox = gtk.HBox(False, 4)
+	hbox.pack_start(box.make_sized_label(label), False, True, 0)
+
+	if not hasattr(alsaaudio, 'cards'):
+		entry = gtk.Entry()
+		hbox.pack_start(entry, True, True, 0)
+		def update_mixer_device():
+			entry.set_text(option.value)
+		def read_mixer_device():
+			return entry.get_text()
+		box.handlers[option] = (read_mixer_device, update_mixer_device)
+		return [hbox]
+
+	button = gtk.OptionMenu()
+	hbox.pack_start(button, True, True, 0)
+
+	menu = gtk.Menu()
+	button.set_menu(menu)
+
+	for name in alsaaudio.cards():
+		item = gtk.MenuItem(name)
+		menu.append(item)
+		item.show_all()
+
+	def update_mixer_device():
+		i = -1
+		for kid in menu.get_children():
+			i += 1
+			item = kid.child
+			if not item:
+				item = button.child
+			label = item.get_text()
+			if label == option.value:
+				button.set_history(i)
+
+	def read_mixer_device(): return button.child.get_text()
+	box.handlers[option] = (read_mixer_device, update_mixer_device)
+	button.connect('changed', lambda w: box.check_widget(option))
+	return [hbox]
+OptionsBox.widget_registry['mixer_devices_list'] = build_mixer_devices_list
 
 rox.app_options.notify()
 
