@@ -95,6 +95,7 @@ def build_channel_list(box, node, label, option):
 				item = gtk.MenuItem(channel)
 				menu.append(item)
 				item.show_all()
+		button.set_history(0)
 		return menu
 
 	class state:
@@ -111,13 +112,17 @@ def build_channel_list(box, node, label, option):
 			if label == option.value:
 				button.set_history(i)
 
-	def read_channel(): return button.child.get_text()
+	def read_channel():
+	    if button.child is None:
+		return ''
+	    return button.child.get_text()
 	box.handlers[option] = (read_channel, update_channel)
 	button.connect('changed', lambda w: box.check_widget(option))
 
 	def options_changed():
 		if MIXER_DEVICE.has_changed:
 			state.menu = build()
+			box.check_widget(option)
 	box.options.add_notify(options_changed)
 	return [hbox]
 OptionsBox.widget_registry['channel_list'] = build_channel_list
@@ -133,10 +138,20 @@ def build_mixer_devices_list(box, node, label, option):
 	menu = gtk.Menu()
 	button.set_menu(menu)
 
-	for name in alsaaudio.cards():
-		item = gtk.MenuItem(name)
-		menu.append(item)
-		item.show_all()
+	for card_index, name in enumerate(alsaaudio.cards()):
+		show_card = False
+		for channel in alsaaudio.mixers(card_index):
+			try:
+				mixer = alsaaudio.Mixer(channel, 0, card_index)
+			except alsaaudio.ALSAAudioError:
+				continue
+			if len(mixer.volumecap()):
+				show_card = True
+				break
+		if show_card:
+			item = gtk.MenuItem(name)
+			menu.append(item)
+			item.show_all()
 
 	def update_mixer_device():
 		i = -1
@@ -405,9 +420,13 @@ class Volume(applet.Applet):
 	def get_options(self):
 		"""Used as the notify callback when options change"""
 		if VOLUME_CONTROL.has_changed or MIXER_DEVICE.has_changed:
-			self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, get_mixer_device())
-			self.get_volume()
-			self.update_ui()
+			try:
+				self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, get_mixer_device())
+			except alsaaudio.ALSAAudioError:
+				pass
+			else:
+				self.get_volume()
+				self.update_ui()
 
 		if SHOW_BAR.has_changed:
 			if SHOW_BAR.int_value:
