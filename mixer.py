@@ -37,36 +37,92 @@ APP_SIZE = [20, 100]
 rox.setup_app_options('Volume', 'Mixer.xml', site='hayber.us')
 Menu.set_save_name('Volume', site='hayber.us')
 
-MIXER_DEVICE = Option('mixer_device', 'default')
 SHOW_VALUES = Option('show_values', False)
 SHOW_CONTROLS = Option('controls', -1)
 
 MASK_LOCK = Option('lock_mask', -1)
 MASK_MUTE = Option('mute_mask', 0)
 
-# support two different alsaaudio APIs
-if hasattr(alsaaudio, 'cards'):
-	try:
-		mixer_device = alsaaudio.cards().index(MIXER_DEVICE.value)
-	except ValueError:
-		mixer_device = 0
-else:
-	mixer_device = MIXER_DEVICE.value
-
-try:
-	ALSA_CHANNELS = []
-	for channel in alsaaudio.mixers(mixer_device):
-		id = 0
-		while (channel,id) in ALSA_CHANNELS:
-			id += 1
+mixer_device_name = None
+for card_index, card in enumerate(alsaaudio.cards()):
+	for channel in alsaaudio.mixers(card_index):
 		try:
-			mixer = alsaaudio.Mixer(channel, id, mixer_device)
+			mixer = alsaaudio.Mixer(channel, 0, card_index)
 		except alsaaudio.ALSAAudioError:
 			continue
 		if len(mixer.volumecap()):
-			ALSA_CHANNELS.append((channel,id))
-except:
-	pass
+			if mixer_device_name is None:
+				mixer_device_name = card
+
+if mixer_device_name is None:
+	mixer_device_name = 'default'
+
+MIXER_DEVICE = Option('mixer_device', mixer_device_name)
+
+
+def get_mixer_device():
+    try:
+	    return alsaaudio.cards().index(MIXER_DEVICE.value)
+    except ValueError:
+	    return 0
+
+
+def get_alsa_channels():
+	alsa_channels = []
+	for card_index, card in enumerate(alsaaudio.cards()):
+		for channel in alsaaudio.mixers(card_index):
+			try:
+				mixer = alsaaudio.Mixer(channel, 0, card_index)
+			except alsaaudio.ALSAAudioError:
+				continue
+			if len(mixer.volumecap()):
+				alsa_channels.append((channel, 0))
+				mixer_device_name = card
+	return alsa_channels
+
+
+def build_mixer_devices_list(box, node, label, option):
+	hbox = gtk.HBox(False, 4)
+	hbox.pack_start(box.make_sized_label(label), False, True, 0)
+
+	button = gtk.OptionMenu()
+	hbox.pack_start(button, True, True, 0)
+
+	menu = gtk.Menu()
+	button.set_menu(menu)
+
+	for card_index, name in enumerate(alsaaudio.cards()):
+		show_card = False
+		for channel in alsaaudio.mixers(card_index):
+			try:
+				mixer = alsaaudio.Mixer(channel, 0, card_index)
+			except alsaaudio.ALSAAudioError:
+				continue
+			if len(mixer.volumecap()):
+				show_card = True
+				break
+		if show_card:
+			item = gtk.MenuItem(name)
+			menu.append(item)
+			item.show_all()
+
+	def update_mixer_device():
+		i = -1
+		for kid in menu.get_children():
+			i += 1
+			item = kid.child
+			if not item:
+				item = button.child
+			label = item.get_text()
+			if label == option.value:
+				button.set_history(i)
+
+	def read_mixer_device(): return button.child.get_text()
+	box.handlers[option] = (read_mixer_device, update_mixer_device)
+	button.connect('changed', lambda w: box.check_widget(option))
+	return [hbox]
+OptionsBox.widget_registry['mixer_devices_list'] = build_mixer_devices_list
+
 
 def build_mixer_controls(box, node, label, option):
 	"""Custom Option widget to allow hide/display of each mixer control"""
@@ -78,6 +134,22 @@ def build_mixer_controls(box, node, label, option):
 
 	controls = {}
 
+	def build():
+		controls.clear()
+
+		n = 0
+		for channel, id in get_alsa_channels():
+			mixer = alsaaudio.Mixer(channel, id, get_mixer_device())
+			if not len(mixer.volumecap()):
+				continue
+			checkbox = controls[n] = gtk.CheckButton(label=channel)
+			if option.int_value & (1 << n):
+				checkbox.set_active(True)
+			checkbox.connect('toggled', lambda e: box.check_widget(option))
+			vbox.pack_start(checkbox)
+			n += 1
+	box.may_add_tip(frame, node)
+
 	def get_values():
 		value = 0
 		for x in controls:
@@ -87,18 +159,13 @@ def build_mixer_controls(box, node, label, option):
 	def set_values(): pass
 	box.handlers[option] = (get_values, set_values)
 
-	n = 0
-	for channel, id in ALSA_CHANNELS:
-		mixer = alsaaudio.Mixer(channel, id, mixer_device)
-		if not len(mixer.volumecap()):
-			continue
-		checkbox = controls[n] = gtk.CheckButton(label=channel)
-		if option.int_value & (1 << n):
-			checkbox.set_active(True)
-		checkbox.connect('toggled', lambda e: box.check_widget(option))
-		vbox.pack_start(checkbox)
-		n += 1
-	box.may_add_tip(frame, node)
+	build()
+
+	def options_changed():
+		if MIXER_DEVICE.has_changed:
+			build()
+			box.check_widget(option)
+	box.options.add_notify(options_changed)
 	return [frame]
 OptionsBox.widget_registry['mixer_controls'] = build_mixer_controls
 
@@ -113,6 +180,7 @@ def build_hidden_value(box, node, label, option):
 	box.handlers[option] = (get_values, set_values)
 	return [widget]
 OptionsBox.widget_registry['hidden_value'] = build_hidden_value
+
 
 rox.app_options.notify()
 
@@ -131,9 +199,9 @@ class Mixer(rox.Window):
 		self.lock_mask = MASK_LOCK.int_value
 
 		n = 0
-		for channel, id in ALSA_CHANNELS:
+		for channel, id in get_alsa_channels():
 			#if the mixer supports a channel add it
-			mixer = alsaaudio.Mixer(channel, id, mixer_device)
+			mixer = alsaaudio.Mixer(channel, id, get_mixer_device())
 			option_mask = option_value = 0
 
 			if not len(mixer.volumecap()):
@@ -194,8 +262,8 @@ class Mixer(rox.Window):
 
 	def setting_toggled(self, vol, channel, button, val):
 		"""Handle checkbox toggles"""
-		ch, id = ALSA_CHANNELS[channel]
-		mixer = alsaaudio.Mixer(ch, id, mixer_device)
+		ch, id = get_alsa_channels()[channel]
+		mixer = alsaaudio.Mixer(ch, id, get_mixer_device())
 
 		if button == volumecontrol._MUTE:
 			mixer.setmute(val)
@@ -217,8 +285,8 @@ class Mixer(rox.Window):
 
 	def set_volume(self, volume, channel):
 		"""Set the playback volume"""
-		ch, id = ALSA_CHANNELS[channel]
-		mixer = alsaaudio.Mixer(ch, id, mixer_device)
+		ch, id = get_alsa_channels()[channel]
+		mixer = alsaaudio.Mixer(ch, id, get_mixer_device())
 
 		try:
 			mixer.setvolume(volume[0], 0)
@@ -228,8 +296,8 @@ class Mixer(rox.Window):
 
 	def get_volume(self, channel):
 		"""Get the current sound card setting for specified channel"""
-		ch, id = ALSA_CHANNELS[channel]
-		mixer = alsaaudio.Mixer(ch, id, mixer_device)
+		ch, id = get_alsa_channels()[channel]
+		mixer = alsaaudio.Mixer(ch, id, get_mixer_device())
 		vol = mixer.getvolume()
 		if len(vol) == 1:
 			return (vol[0], vol[0])
