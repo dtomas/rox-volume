@@ -6,11 +6,11 @@
 		<hbox>
 			<vbox>
 				<frame label='Mixer Device'>
-					<entry name='mixer_device' label='Name'>
+					<mixer_devices_list name='mixer_device' label='Name'>
 					The card name for your mixer.  Typically it is 'default'.  
 If you have more than one soundcard, you can specify which 
 card you want to control here.
-					</entry>
+					</mixer_devices_list>
 				</frame>
 				<frame label='Options'>
 					<toggle name='show_values' label='Show Mixer Values'>
