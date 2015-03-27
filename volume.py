@@ -37,41 +37,41 @@ APP_SIZE = [28, 150]
 rox.setup_app_options(APP_NAME, site='hayber.us')
 Menu.set_save_name(APP_NAME, site='hayber.us')
 
-MIXER_DEVICE = Option('mixer_device', 'default')
 SHOW_ICON = Option('show_icon', True)
 SHOW_BAR = Option('show_bar', False)
 THEME = Option('theme', 'gtk-theme')
 
-# support two different alsaaudio APIs
-if hasattr(alsaaudio, 'cards'):
-	try:
-		mixer_device = alsaaudio.cards().index(MIXER_DEVICE.value)
-	except ValueError:
-		mixer_device = 0
-else:
-	mixer_device = MIXER_DEVICE.value
-
 volume_control = None
-try:
-	ALSA_CHANNELS = []
-	for channel in alsaaudio.mixers(mixer_device):
-		id = 0
-		while (channel,id) in ALSA_CHANNELS:
-			id += 1
+mixer_device_name = None
+for card_index, card in enumerate(alsaaudio.cards()):
+	print(card + '\n')
+	for channel in alsaaudio.mixers(card_index):
+		print(channel + '\n')
 		try:
-			mixer = alsaaudio.Mixer(channel, id, mixer_device)
+			mixer = alsaaudio.Mixer(channel, 0, card_index)
 		except alsaaudio.ALSAAudioError:
 			continue
 		if len(mixer.volumecap()):
 			if volume_control is None:
 				volume_control = channel
-			ALSA_CHANNELS.append(channel)
-except:
-	pass
+			if mixer_device_name is None:
+				mixer_device_name = card
 
 if volume_control is None:
 	volume_control = 'Master'
+if mixer_device_name is None:
+	mixer_device_name = 'default'
+
 VOLUME_CONTROL = Option('mixer_channels', volume_control)
+MIXER_DEVICE = Option('mixer_device', mixer_device_name)
+
+
+def get_mixer_device():
+    try:
+	    return alsaaudio.cards().index(MIXER_DEVICE.value)
+    except ValueError:
+	    return 0
+
 
 def build_channel_list(box, node, label, option):
 	hbox = gtk.HBox(False, 4)
@@ -85,19 +85,10 @@ def build_channel_list(box, node, label, option):
 
 		menu = gtk.Menu()
 		button.set_menu(menu)
-		if hasattr(alsaaudio, 'cards'):
-			try:
-				mixer_device = alsaaudio.cards().index(MIXER_DEVICE.value)
-			except ValueError:
-				mixer_device = 0
-		else:
-			mixer_device = MIXER_DEVICE.value
+		mixer_device = get_mixer_device()
 		for channel in alsaaudio.mixers(mixer_device):
-			id = 0
-			while (channel,id) in ALSA_CHANNELS:
-				id += 1
 			try:
-				mixer = alsaaudio.Mixer(channel, id, mixer_device)
+				mixer = alsaaudio.Mixer(channel, 0, mixer_device)
 			except alsaaudio.ALSAAudioError:
 				continue
 			if len(mixer.volumecap()):
@@ -135,16 +126,6 @@ OptionsBox.widget_registry['channel_list'] = build_channel_list
 def build_mixer_devices_list(box, node, label, option):
 	hbox = gtk.HBox(False, 4)
 	hbox.pack_start(box.make_sized_label(label), False, True, 0)
-
-	if not hasattr(alsaaudio, 'cards'):
-		entry = gtk.Entry()
-		hbox.pack_start(entry, True, True, 0)
-		def update_mixer_device():
-			entry.set_text(option.value)
-		def read_mixer_device():
-			return entry.get_text()
-		box.handlers[option] = (read_mixer_device, update_mixer_device)
-		return [hbox]
 
 	button = gtk.OptionMenu()
 	hbox.pack_start(button, True, True, 0)
@@ -227,9 +208,9 @@ class Volume(applet.Applet):
 
 		self.thing = None
 		try:
-			self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, mixer_device)
+			self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, get_mixer_device())
 		except:
-			rox.info(_('Failed to open Mixer device "%s". Please select a different device.\n') % mixer_device)
+			rox.info(_('Failed to open Mixer device "%s". Please select a different device.\n') % get_mixer_device())
 			return
 
 		self.get_volume()
@@ -423,8 +404,8 @@ class Volume(applet.Applet):
 
 	def get_options(self):
 		"""Used as the notify callback when options change"""
-		if VOLUME_CONTROL.has_changed:
-			self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, mixer_device)
+		if VOLUME_CONTROL.has_changed or MIXER_DEVICE.has_changed:
+			self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, get_mixer_device())
 			self.get_volume()
 			self.update_ui()
 
