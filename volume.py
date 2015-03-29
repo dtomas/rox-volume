@@ -28,7 +28,7 @@ from options import (
 
 try:
 	import alsaaudio
-except:
+except ImportError:
 	rox.croak(_("You need to install the pyalsaaudio module"))
 
 APP_DIR = rox.app_dir
@@ -87,7 +87,7 @@ class Volume(applet.Applet):
 		self.thing = None
 		try:
 			self.mixer = alsaaudio.Mixer(VOLUME_CONTROL.value, 0, get_mixer_device())
-		except:
+		except alsaaudio.ALSAAudioError:
 			rox.info(_('Failed to open Mixer device "%s". Please select a different device.\n') % get_mixer_device())
 			return
 
@@ -104,15 +104,12 @@ class Volume(applet.Applet):
 	def load_icons(self):
 		self.icons = []
 		if THEME.value == 'gtk-theme':
-			try:
-				theme = gtk.icon_theme_get_default()
-				self.icons.append(theme.load_icon('audio-volume-muted', 24, 0))
-				self.icons.append(theme.load_icon('audio-volume-low', 24, 0))
-				self.icons.append(theme.load_icon('audio-volume-medium', 24, 0))
-				self.icons.append(theme.load_icon('audio-volume-high', 24, 0))
-				return
-			except:
-				pass
+			theme = gtk.icon_theme_get_default()
+			self.icons.append(theme.load_icon('audio-volume-muted', 24, 0))
+			self.icons.append(theme.load_icon('audio-volume-low', 24, 0))
+			self.icons.append(theme.load_icon('audio-volume-medium', 24, 0))
+			self.icons.append(theme.load_icon('audio-volume-high', 24, 0))
+			return
 		theme_dir = os.path.join(APP_DIR, 'themes', THEME.value)
 		self.icons.append(gtk.gdk.pixbuf_new_from_file(os.path.join(theme_dir, 'audio-volume-muted.svg')))
 		self.icons.append(gtk.gdk.pixbuf_new_from_file(os.path.join(theme_dir, 'audio-volume-low.svg')))
@@ -233,11 +230,8 @@ class Volume(applet.Applet):
 		"""Send the volume setting(s) to the mixer """
 		if len(vol) == 1:
 			vol = vol + vol
-		try:
-			self.mixer.setvolume(vol[0], 0)
-			self.mixer.setvolume(vol[1], 1)
-		except:
-			pass
+		self.mixer.setvolume(vol[0], 0)
+		self.mixer.setvolume(vol[1], 1)
 		self.level = vol
 		self.update_ui()
 
@@ -257,13 +251,13 @@ class Volume(applet.Applet):
 			else:
 				self.mixer.setmute(2)
 			self.update_ui()
-		except:
+		except alsaaudio.ALSAAudioError:
 			rox.info(_('Device does not support Muting.'))
 
 	def update_ui(self):
 		vol = self.level
 		try: mute = self.mixer.getmute()[0]
-		except: mute = False
+		except alsaaudio.ALSAAudioError: mute = False
 
 		if (vol[0] <= 0) or mute:
 			self.pixbuf = self.icons[0]
