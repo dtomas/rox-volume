@@ -101,6 +101,11 @@ class Volume(applet.Applet):
 		if not SHOW_BAR.int_value:
 			self.bar.hide()
 
+		def theme_changed(theme):
+		    self.load_icons()
+		    self.update_ui()
+		gtk.icon_theme_get_default().connect("changed", theme_changed)
+
 	def load_icons(self):
 		self.icons = []
 
