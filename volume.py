@@ -43,6 +43,7 @@ class Volume(applet.Applet):
 	"""An applet to control a sound card Master or PCM volume"""
 	def __init__(self, filename):
 		applet.Applet.__init__(self, filename)
+                self.set_name("VolumePanelApplet")
 
 		self.vertical = self.get_panel_orientation() in ('Right', 'Left')
 		if self.vertical:
@@ -321,4 +322,3 @@ class Volume(applet.Applet):
 	def quit(self):
 		"""Quit"""
 		self.destroy()
-
