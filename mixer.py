@@ -30,7 +30,7 @@ from options import (
 
 try:
 	import alsaaudio
-except:
+except ImportError:
 	rox.croak(_("You need to install the pyalsaaudio module"))
 
 APP_NAME = 'MixerX'
@@ -147,20 +147,24 @@ class Mixer(rox.Window):
 				option_value |= volumecontrol._LOCK
 
 			try:
-				if mixer.getrec():
-					option_mask |= volumecontrol._REC
-				if mixer.getrec()[0]:
-					option_value |= volumecontrol._REC
-			except:
+				rec = mixer.getrec()
+			except alsaaudio.ALSAAudioError:
 				pass
+			else:
+			    if rec:
+				    option_mask |= volumecontrol._REC
+			    if rec[0]:
+				    option_value |= volumecontrol._REC
 
 			try:
-				if mixer.getmute():
-					option_mask |= volumecontrol._MUTE
-				if mixer.getmute()[0]:
-					option_value |= volumecontrol._MUTE
-			except:
-				pass
+				mute = mixer.getmute()
+			except alsaaudio.ALSAAudioError:
+			    pass
+			else:
+			    if mute:
+				    option_mask |= volumecontrol._MUTE
+			    if mute[0]:
+				    option_value |= volumecontrol._MUTE
 
 			volume = VolumeControl(n, option_mask, option_value,
 								SHOW_VALUES.int_value, channel)
@@ -220,11 +224,12 @@ class Mixer(rox.Window):
 		ch, id = get_alsa_channels()[channel]
 		mixer = alsaaudio.Mixer(ch, id, get_mixer_device())
 
-		try:
-			mixer.setvolume(volume[0], 0)
-			mixer.setvolume(volume[1], 1)
-		except:
-			pass
+                for i, v in enumerate(volume):
+                    try:
+                            mixer.setvolume(int(v), i)
+                    except alsaaudio.ALSAAudioError:
+                            # No such channel.
+                            pass
 
 	def get_volume(self, channel):
 		"""Get the current sound card setting for specified channel"""
