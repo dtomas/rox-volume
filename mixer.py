@@ -44,7 +44,10 @@ APP_SIZE = [20, 100]
 
 def get_alsa_channels():
 	alsa_channels = []
+	mixer_device = get_mixer_device()
 	for card_index, card in enumerate(alsaaudio.cards()):
+		if card_index != mixer_device:
+			continue
 		for channel in alsaaudio.mixers(card_index):
 			try:
 				mixer = alsaaudio.Mixer(channel, 0, card_index)
